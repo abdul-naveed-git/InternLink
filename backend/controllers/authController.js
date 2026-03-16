@@ -237,14 +237,14 @@ exports.login = asyncHandler(async (req, res) => {
 
   res.cookie("accessToken", accessToken, {
     httpOnly: true,
-    sameSite: "strict",
+    sameSite: "none",
     secure: process.env.NODE_ENV === "production",
     maxAge: 15 * 60 * 1000,
   });
 
   res.cookie("refreshToken", refreshToken, {
     httpOnly: true,
-    sameSite: "strict",
+    sameSite: "none",
     secure: process.env.NODE_ENV === "production",
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
@@ -282,15 +282,15 @@ exports.refreshToken = asyncHandler(async (req, res) => {
 
   res.cookie("accessToken", newAccessToken, {
     httpOnly: true,
-    sameSite: "strict",
-    secure: false,
+    sameSite: "none",
+    secure: true,
     maxAge: 15 * 60 * 1000,
   });
 
   res.cookie("refreshToken", newRefreshToken, {
     httpOnly: true,
-    sameSite: "strict",
-    secure: false,
+    sameSite: "none",
+    secure: true,
     maxAge: 7 * 24 * 60 * 60 * 1000,
   });
 
