@@ -1,9 +1,11 @@
-import { useState, useEffect, useMemo } from "react";
+﻿import { useState, useEffect, useMemo } from "react";
 import DashboardHeader from "../components/DashboardHeader.jsx";
 import { StudentDashboard } from "../components/StudentDashboard.jsx";
 import { AdminDashboard } from "../components/AdminDashboard.jsx";
 import { useNavigate } from "react-router-dom";
+import { toast } from "react-hot-toast";
 import { apiFetch } from "../src/api.js";
+import { useNotifications } from "../src/contexts/NotificationContext.jsx";
 
 const sortOpportunitiesWithExpiredLast = (items) => {
   const now = new Date();
@@ -37,60 +39,97 @@ export const Maindashboard = ({ user, onLogout }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [isDataRefreshing, setIsDataRefreshing] = useState(false);
   const navigate = useNavigate();
+  const notifications = useNotifications();
+  const studentMissingGroup = user?.role === "student" && !user?.groupId;
+  const handleProfileClick = () => {
+    if (user?.role === "student" && !user?.groupId) {
+      notifications.action(
+        "Please join or create a group.",
+        "Go to profile",
+        () => navigate("/profile"),
+      );
+      return;
+    }
+
+    navigate("/profile");
+  };
 
   useEffect(() => {
     if (!user) {
       navigate("/login");
+      setIsLoading(false);
       return;
     }
 
-    const loadData = async () => {
-      try {
-        const query = new URLSearchParams();
-        if (user?.groupId) query.append("groupId", user.groupId);
-        if (user?._id) query.append("userId", user._id);
-
-        const queryString = query.toString();
-        const [groupsRes, oppRes] = await Promise.all([
-          apiFetch("/groups"),
-          apiFetch(`/opportunities${queryString ? `?${queryString}` : ""}`),
-        ]);
-        const groupsData = await groupsRes.json();
-        const oppData = await oppRes.json();
-
-        setGroups(groupsData);
-        if (Array.isArray(oppData)) {
-          setOpportunities(oppData);
-        } else {
-          setOpportunities([]);
-        }
-      } catch (err) {
-        console.error("Data loading error:", err);
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    loadData();
-  }, [user, navigate]);
-
-  const refreshData = async () => {
-    setIsDataRefreshing(true);
-
-    try {
+    const loadPromise = (async () => {
       const query = new URLSearchParams();
       if (user?.groupId) query.append("groupId", user.groupId);
       if (user?._id) query.append("userId", user._id);
 
       const queryString = query.toString();
-      const res = await apiFetch(
-        `/opportunities${queryString ? `?${queryString}` : ""}`,
-      );
+      const [groupsPayload, oppPayload] = await Promise.all([
+        apiFetch("/groups", { suppressGlobalErrorToast: true }),
+        apiFetch(`/opportunities${queryString ? `?${queryString}` : ""}`, {
+          suppressGlobalErrorToast: true,
+        }),
+      ]);
 
-      const data = await res.json();
+      const normalizedGroups = Array.isArray(groupsPayload?.data)
+        ? groupsPayload.data
+        : [];
+      const normalizedOpp = Array.isArray(oppPayload?.data)
+        ? oppPayload.data
+        : [];
 
-      setOpportunities(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.error("Refresh failed:", err);
+      return {
+        groups: normalizedGroups,
+        opportunities: normalizedOpp,
+      };
+    })();
+
+    toast
+      .promise(loadPromise, {
+        loading: "Loading dashboard...",
+        success: "Dashboard ready",
+        error: (err) => err.message || "Unable to load dashboard.",
+      })
+      .then(({ groups: fetchedGroups, opportunities: fetchedOpp }) => {
+        setGroups(fetchedGroups);
+        setOpportunities(fetchedOpp);
+      })
+      .catch(() => {
+        setGroups([]);
+        setOpportunities([]);
+      })
+      .finally(() => {
+        setIsLoading(false);
+      });
+  }, [user, navigate]);
+
+  const refreshData = async () => {
+    if (!user) return;
+    setIsDataRefreshing(true);
+
+    const query = new URLSearchParams();
+    if (user?.groupId) query.append("groupId", user.groupId);
+    if (user?._id) query.append("userId", user._id);
+
+    const queryString = query.toString();
+    const refreshPromise = apiFetch(
+      `/opportunities${queryString ? `?${queryString}` : ""}`,
+      { suppressGlobalErrorToast: true },
+    );
+
+    try {
+      const payload = await toast.promise(refreshPromise, {
+        loading: "Refreshing opportunities...",
+        success: "Opportunities refreshed",
+        error: (err) => err.message || "Unable to refresh opportunities.",
+      });
+      const list = payload?.data ?? [];
+      setOpportunities(Array.isArray(list) ? list : []);
+    } catch {
+      // error already shown via toast
     } finally {
       setIsDataRefreshing(false);
     }
@@ -103,16 +142,21 @@ export const Maindashboard = ({ user, onLogout }) => {
 
   const handleSaveOpportunity = async (id) => {
     try {
-      await apiFetch(`/opportunities/${id}/save`, {
-        method: "POST",
-        body: JSON.stringify({
-          userId: user._id,
+      await toast.promise(
+        apiFetch(`/opportunities/${id}/save`, {
+          method: "POST",
+          suppressGlobalErrorToast: true,
         }),
-      });
-
+        {
+          loading: "Updating saved list...",
+          success: (result) =>
+            result?.message ?? "Opportunity saved preference updated.",
+          error: (err) => err.message || "Unable to save opportunity.",
+        },
+      );
       refreshData();
-    } catch (err) {
-      console.error("Save failed:", err);
+    } catch {
+      // toast already shown
     }
   };
 
@@ -122,43 +166,66 @@ export const Maindashboard = ({ user, onLogout }) => {
     if (!opp) return;
 
     try {
-      await apiFetch(`/opportunities/${id}/apply`, {
-        method: "POST",
-        body: JSON.stringify({
-          userId: user._id,
+      await toast.promise(
+        apiFetch(`/opportunities/${id}/apply`, {
+          method: "POST",
+          suppressGlobalErrorToast: true,
         }),
-      });
+        {
+          loading: "Submitting application...",
+          success: (result) =>
+            result?.message ?? "Applied successfully. Opening link...",
+          error: (err) =>
+            err.message || "Unable to apply for this opportunity.",
+        },
+      );
 
-      window.open(opp.applyLink, "_blank");
+      if (opp.applyLink) {
+        window.open(opp.applyLink, "_blank");
+      }
 
       refreshData();
-    } catch (err) {
-      console.error("Apply failed:", err);
+    } catch {
+      // toast handled
     }
   };
 
   const handleAddOpportunity = async (partial) => {
-    //await (partial, user.id);
     try {
-      await apiFetch("/opportunities", {
-        method: "POST",
-        body: JSON.stringify({
-          ...partial,
+      await toast.promise(
+        apiFetch("/opportunities", {
+          method: "POST",
+          body: partial,
+          suppressGlobalErrorToast: true,
         }),
-      });
-    } catch (err) {
-      console.error("Data loading error:", err);
+        {
+          loading: "Creating opportunity...",
+          success: (result) => result?.message ?? "Opportunity created.",
+          error: (err) => err.message || "Unable to create opportunity.",
+        },
+      );
+      await refreshData();
+    } catch {
+      // already handled
     }
-    await refreshData();
   };
 
   const handleDeleteOpportunity = async (id) => {
     try {
-      await apiFetch(`/opportunities/${id}`, { method: "DELETE" });
-
-      refreshData();
-    } catch (err) {
-      console.error("Delete failed:", err);
+      await toast.promise(
+        apiFetch(`/opportunities/${id}`, {
+          method: "DELETE",
+          suppressGlobalErrorToast: true,
+        }),
+        {
+          loading: "Deleting opportunity...",
+          success: (result) => result?.message ?? "Opportunity deleted.",
+          error: (err) => err.message || "Unable to delete opportunity.",
+        },
+      );
+      await refreshData();
+    } catch {
+      // toast shown
     }
   };
 
@@ -180,7 +247,7 @@ export const Maindashboard = ({ user, onLogout }) => {
       <DashboardHeader
         user={user}
         onLogout={onLogout}
-        onProfileClick={() => navigate("/profile")}
+        onProfileClick={handleProfileClick}
       />
 
       {isDataRefreshing && (
@@ -230,6 +297,7 @@ export const Maindashboard = ({ user, onLogout }) => {
             onSave={handleSaveOpportunity}
             onApply={handleApplyOpportunity}
             onViewDetails={(id) => navigate(`/opportunity/${id}`)}
+            disableActions={studentMissingGroup}
           />
         ) : (
           <AdminDashboard

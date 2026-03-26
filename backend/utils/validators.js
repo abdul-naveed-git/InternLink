@@ -3,11 +3,10 @@ const mongoose = require("mongoose");
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const URL_PATTERN = /^https?:\/\/.+/i;
 const ROLE_OPTIONS = ["student", "teacher"];
+const { createHttpError } = require("./httpErrors");
 
-const throwValidationError = (message) => {
-  const err = new Error(message);
-  err.status = 400;
-  throw err;
+const throwValidationError = (message, code = "validation_error") => {
+  throw createHttpError(400, message, code);
 };
 
 const ensureString = (value, fieldName) => {
@@ -49,12 +48,22 @@ const validateRegistrationPayload = ({
     }
   }
 
-  const normalizedGroupId = groupId ? String(groupId).trim() : null;
+  let normalizedGroupId = null;
+
+  if (groupId) {
+    const id = String(groupId).trim();
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      throwValidationError("Invalid group selected.");
+    }
+
+    normalizedGroupId = id;
+  }
 
   return {
     name: trimmedName,
     email: trimmedEmail,
-    password,
+    password: password.trim(),
     role: selectedRole,
     groupId: normalizedGroupId,
   };
@@ -99,7 +108,7 @@ const validateProfileUpdatePayload = ({ name, email, password }) => {
     if (password.length < 8) {
       throwValidationError("Password must be at least 8 characters long.");
     }
-    payload.password = password;
+    payload.password = password.trim();
   }
 
   return payload;
@@ -165,7 +174,7 @@ const validateOpportunityPayload = (payload = {}, options = {}) => {
   }
 
   if (payload.description !== undefined) {
-    setStringField(payload.description, "description", 20);
+    setStringField(payload.description, "description", 10);
   }
 
   if (payload.category !== undefined) {
@@ -223,7 +232,7 @@ const validateTeacherCreationPayload = ({ name, email, password }) => {
   return {
     name: trimmedName,
     email: trimmedEmail,
-    password,
+    password: password.trim(),
   };
 };
 

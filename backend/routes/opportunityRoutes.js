@@ -10,26 +10,24 @@ const {
   applyOpportunity,
 } = require("../controllers/opportunityController");
 
-const auth = require("../middleware/auth");
 const authorizeRoles = require("../middleware/role");
 
 const router = express.Router();
 
-router.get("/", auth, getOpportunities);
-router.get("/:id", auth, getOpportunityById);
+router.get("/", getOpportunities);
+router.get("/:id", getOpportunityById);
 
-router.post("/", auth, authorizeRoles("teacher", "admin"), createOpportunity);
+router.post("/", authorizeRoles("teacher", "admin"), createOpportunity);
 
-router.put("/:id", auth, authorizeRoles("teacher", "admin"), updateOpportunity);
+router.put("/:id", authorizeRoles("teacher", "admin"), updateOpportunity);
 
 router.delete(
   "/:id",
-  auth,
   authorizeRoles("teacher", "admin"),
   deleteOpportunity,
 );
 
-router.post("/:id/save", auth, saveOpportunity);
-router.post("/:id/apply", auth, applyOpportunity);
+router.post("/:id/save", saveOpportunity);
+router.post("/:id/apply", applyOpportunity);
 
 module.exports = router;

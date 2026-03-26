@@ -11,6 +11,7 @@ import {
 import { Badge } from "../components/Badge.jsx";
 import { apiFetch } from "../src/api.js";
 import { formatFullDate, formatRelativeTime } from "../src/utils/time.js";
+import { toast } from "react-hot-toast";
 
 const normalizeTargetIds = (values = []) =>
   values.map((value) => {
@@ -38,11 +39,12 @@ const OpportunityDetail = ({ user }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [formState, setFormState] = useState(defaultFormState);
   const [formErrors, setFormErrors] = useState({});
-  const [statusMessage, setStatusMessage] = useState(null);
   const [isSavingChanges, setIsSavingChanges] = useState(false);
   const [isApplying, setIsApplying] = useState(false);
   const [isSavingForLater, setIsSavingForLater] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  const needsGroup = user?.role === "student" && !user?.groupId;
 
   const isTeacher = user?.role === "teacher" || user?.role === "admin";
 
@@ -50,22 +52,26 @@ const OpportunityDetail = ({ user }) => {
     const loadData = async () => {
       setIsLoading(true);
       try {
-        const [opportunityRes, groupsRes] = await Promise.all([
-          apiFetch(`/opportunities/${id}`),
-          apiFetch("/groups"),
+        const [opportunityPayload, groupsPayload] = await Promise.all([
+          apiFetch(`/opportunities/${id}`, {
+            suppressGlobalErrorToast: true,
+          }),
+          apiFetch("/groups", {
+            suppressGlobalErrorToast: true,
+          }),
         ]);
 
-        if (!opportunityRes.ok) {
-          const error = await opportunityRes.json();
-          throw new Error(
-            error.message || "Unable to load opportunity detail.",
-          );
+        const opportunityData =
+          opportunityPayload?.data ?? opportunityPayload ?? null;
+        const groupsData = Array.isArray(groupsPayload?.data)
+          ? groupsPayload.data
+          : Array.isArray(groupsPayload)
+            ? groupsPayload
+            : [];
+
+        if (!opportunityData) {
+          throw new Error("Opportunity not found.");
         }
-
-        const [opportunityData, groupsData] = await Promise.all([
-          opportunityRes.json(),
-          groupsRes.json(),
-        ]);
 
         setOpportunity(opportunityData);
         setGroups(groupsData);
@@ -80,9 +86,9 @@ const OpportunityDetail = ({ user }) => {
           description: opportunityData.description || "",
           targetGroups: normalizeTargetIds(opportunityData.targetGroups),
         });
-        setStatusMessage(null);
       } catch (err) {
-        setStatusMessage({ type: "error", text: err.message });
+        toast.error(err.message || "Unable to load opportunity detail.");
+        setOpportunity(null);
       } finally {
         setIsLoading(false);
       }
@@ -115,11 +121,11 @@ const OpportunityDetail = ({ user }) => {
     return `Deadline: ${deadlineDate.toLocaleDateString()}`;
   }, [opportunity]);
 
-  const includesUser = (list) =>
-    list?.some((entry) => String(entry) === String(user?._id));
-
-  const isSaved = includesUser(opportunity?.savedBy);
-  const isApplied = includesUser(opportunity?.appliedBy);
+  const isSaved = opportunity?.isSaved;
+  const isApplied = opportunity?.hasApplied;
+  const appliedCount =
+    opportunity?.appliedByCount ??
+    (Array.isArray(opportunity?.appliedBy) ? opportunity.appliedBy.length : 0);
   const isExpired = opportunity
     ? new Date(opportunity.deadline).getTime() < Date.now()
     : false;
@@ -175,40 +181,39 @@ const OpportunityDetail = ({ user }) => {
     event?.preventDefault();
     if (!isTeacher) return;
 
-    const errors = validateForm();
-    if (Object.keys(errors).length) {
-      setFormErrors(errors);
-      setStatusMessage({
-        type: "error",
-        text: "Fix form issues before saving.",
-      });
+    const fieldErrors = validateForm();
+    if (Object.keys(fieldErrors).length) {
+      setFormErrors(fieldErrors);
+      toast.error("Fix the highlighted form errors before saving.");
       return;
     }
 
     setIsSavingChanges(true);
     try {
-      const response = await apiFetch(`/opportunities/${id}`, {
-        method: "PUT",
-        body: JSON.stringify({
-          title: formState.title.trim(),
-          company: formState.company.trim(),
-          category: formState.category,
-          description: formState.description.trim(),
-          deadline: formState.deadline,
-          applyLink: formState.applyLink.trim(),
-          targetGroups: formState.targetGroups,
+      const payload = await toast.promise(
+        apiFetch(`/opportunities/${id}`, {
+          method: "PUT",
+          body: {
+            title: formState.title.trim(),
+            company: formState.company.trim(),
+            category: formState.category,
+            description: formState.description.trim(),
+            deadline: formState.deadline,
+            applyLink: formState.applyLink.trim(),
+            targetGroups: formState.targetGroups,
+          },
+          suppressGlobalErrorToast: true,
         }),
-      });
+        {
+          loading: "Saving changes...",
+          success: (result) => result?.message ?? "Opportunity updated.",
+          error: (err) => err.message || "Unable to save changes.",
+        },
+      );
 
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.message || "Unable to save changes.");
-      }
-
-      setOpportunity(data);
-      setStatusMessage({ type: "success", text: "Opportunity updated." });
-    } catch (err) {
-      setStatusMessage({ type: "error", text: err.message });
+      setOpportunity(payload?.data ?? payload);
+    } catch {
+      // handled
     } finally {
       setIsSavingChanges(false);
     }
@@ -216,25 +221,34 @@ const OpportunityDetail = ({ user }) => {
 
   const handleApply = async () => {
     if (!opportunity) return;
+    if (needsGroup) {
+      toast.error("Please join a group before applying.");
+      return;
+    }
     setIsApplying(true);
     try {
-      const response = await apiFetch(`/opportunities/${id}/apply`, {
-        method: "POST",
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.message || "Unable to complete application.");
+      const payload = await toast.promise(
+        apiFetch(`/opportunities/${id}/apply`, {
+          method: "POST",
+          suppressGlobalErrorToast: true,
+        }),
+        {
+          loading: "Submitting application...",
+          success: (result) => result?.message ?? "Application submitted.",
+          error: (err) => err.message || "Unable to complete application.",
+        },
+      );
+
+      const updated =
+        payload?.data?.opportunity ?? payload?.data ?? payload ?? opportunity;
+      setOpportunity(updated);
+      const link = updated?.applyLink || opportunity?.applyLink;
+      if (link) {
+        window.open(link, "_blank");
       }
-      setOpportunity(data.opportunity);
-      setStatusMessage({
-        type: "success",
-        text: "Application submitted. Opening link...",
-      });
-      if (opportunity.applyLink) {
-        window.open(opportunity.applyLink, "_blank");
-      }
-    } catch (err) {
-      setStatusMessage({ type: "error", text: err.message });
+      toast.success("Application submitted.");
+    } catch {
+      // error handled
     } finally {
       setIsApplying(false);
     }
@@ -242,22 +256,33 @@ const OpportunityDetail = ({ user }) => {
 
   const handleToggleSave = async () => {
     if (!opportunity) return;
+    if (needsGroup) {
+      toast.error("Please join a group before saving opportunities.");
+      return;
+    }
     setIsSavingForLater(true);
     try {
-      const response = await apiFetch(`/opportunities/${id}/save`, {
-        method: "POST",
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.message || "Save action failed.");
-      }
-      setOpportunity(data.opportunity);
-      setStatusMessage({
-        type: "success",
-        text: data.saved ? "Added to saved list." : "Removed from saved list.",
-      });
-    } catch (err) {
-      setStatusMessage({ type: "error", text: err.message });
+      const payload = await toast.promise(
+        apiFetch(`/opportunities/${id}/save`, {
+          method: "POST",
+          suppressGlobalErrorToast: true,
+        }),
+        {
+          loading: "Updating saved list...",
+          success: (result) => {
+            const saved = result?.data?.saved;
+            if (result?.message) return result.message;
+            return saved ? "Added to saved list." : "Removed from saved list.";
+          },
+          error: (err) => err.message || "Save action failed.",
+        },
+      );
+
+      const updated =
+        payload?.data?.opportunity ?? payload?.data ?? payload ?? opportunity;
+      setOpportunity(updated);
+    } catch {
+      // handled
     } finally {
       setIsSavingForLater(false);
     }
@@ -271,16 +296,20 @@ const OpportunityDetail = ({ user }) => {
     }
     setIsDeleting(true);
     try {
-      const response = await apiFetch(`/opportunities/${id}`, {
-        method: "DELETE",
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.message || "Delete failed.");
-      }
+      await toast.promise(
+        apiFetch(`/opportunities/${id}`, {
+          method: "DELETE",
+          suppressGlobalErrorToast: true,
+        }),
+        {
+          loading: "Deleting opportunity...",
+          success: (result) => result?.message ?? "Opportunity deleted.",
+          error: (err) => err.message || "Delete failed.",
+        },
+      );
       navigate("/dashboard");
-    } catch (err) {
-      setStatusMessage({ type: "error", text: err.message });
+    } catch {
+      // handled
     } finally {
       setIsDeleting(false);
     }
@@ -371,19 +400,6 @@ const OpportunityDetail = ({ user }) => {
               </span>
             )}
           </div>
-
-          {statusMessage && (
-            <div
-              className={`px-3 py-2 rounded-lg text-sm ${
-                statusMessage.type === "error"
-                  ? "bg-red-50 text-red-700 border border-red-100"
-                  : "bg-green-50 text-green-700 border border-green-100"
-              }`}
-              role="alert"
-            >
-              {statusMessage.text}
-            </div>
-          )}
 
           {isTeacher ? (
             <form className="space-y-5" onSubmit={handleSaveChanges}>
@@ -569,12 +585,19 @@ const OpportunityDetail = ({ user }) => {
               <div className="flex flex-wrap gap-3 items-center">
                 <button
                   onClick={handleApply}
-                  disabled={isApplying || isApplied || isExpired}
+                  disabled={isApplying || isApplied || isExpired || needsGroup}
                   className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition ${
                     isApplied
                       ? "bg-green-50 text-green-700 border border-green-200"
                       : "bg-indigo-600 text-white hover:bg-indigo-700"
-                  }`}
+                  } ${needsGroup ? "opacity-60 cursor-not-allowed" : ""}`}
+                  title={
+                    needsGroup
+                      ? "Join a group to apply"
+                      : isApplied
+                        ? "Already applied"
+                        : "Apply Now"
+                  }
                   type="button"
                 >
                   {isApplied ? (
@@ -592,11 +615,19 @@ const OpportunityDetail = ({ user }) => {
                 </button>
                 <button
                   onClick={handleToggleSave}
+                  disabled={isSavingForLater || needsGroup}
                   className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm border transition ${
                     isSaved
                       ? "bg-indigo-50 text-indigo-600 border-indigo-200"
                       : "text-gray-500 border-gray-200 hover:border-gray-300 hover:text-gray-700"
-                  }`}
+                  } ${needsGroup ? "opacity-60 cursor-not-allowed" : ""}`}
+                  title={
+                    needsGroup
+                      ? "Please join a group to save opportunities"
+                      : isSaved
+                        ? "Saved"
+                        : "Save for later"
+                  }
                   type="button"
                 >
                   <Bookmark className="w-4 h-4" />
@@ -608,8 +639,7 @@ const OpportunityDetail = ({ user }) => {
                 </button>
               </div>
               <p className="text-xs text-gray-500">
-                {opportunity.appliedBy.length} student
-                {opportunity.appliedBy.length === 1 ? "" : "s"} applied
+                {appliedCount} student{appliedCount === 1 ? "" : "s"} applied
               </p>
               <div className="text-sm text-gray-500 flex items-center gap-2">
                 <ExternalLink className="w-4 h-4" />
