@@ -1,77 +1,124 @@
+import { toast } from "react-hot-toast";
+
 export const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL ?? "http://localhost:3000/api";
 
-const getStatusType = (status) => {
-  if (status === 401) return "unauthorized";
-  if (status === 403) return "forbidden";
-  if (status === 404) return "not_found";
-  return "error";
-};
+const isPlainObject = (value) =>
+  value != null &&
+  typeof value === "object" &&
+  !(value instanceof FormData) &&
+  !(value instanceof URLSearchParams);
 
-const readPayload = async (response) => {
-  const clone = response.clone();
-  const contentType = clone.headers.get("content-type") || "";
+const serializeBody = (value) =>
+  isPlainObject(value) ? JSON.stringify(value) : value;
 
+const parseResponsePayload = async (response) => {
+  const contentType = response.headers.get("Content-Type") || "";
   if (contentType.includes("application/json")) {
     try {
-      return await clone.json();
+      return await response.json();
     } catch {
-      // fallback to text below
+      return null;
+    }
+  }
+  return null;
+};
+
+let isRefreshing = false;
+let refreshPromise = null;
+
+export const apiFetch = async (path, options = {}) => {
+  const {
+    headers = {},
+    body,
+    suppressGlobalErrorToast = false,
+    ...rest
+  } = options;
+
+  const requestBody = serializeBody(body);
+  const inferredHeaders =
+    isPlainObject(body) && !headers["Content-Type"]
+      ? { "Content-Type": "application/json" }
+      : {};
+  const finalHeaders = { ...inferredHeaders, ...headers };
+
+  const buildRequest = () => {
+    const requestOptions = {
+      credentials: "include",
+      headers: finalHeaders,
+      ...rest,
+    };
+    if (requestBody !== undefined) {
+      requestOptions.body = requestBody;
+    }
+    return fetch(`${API_BASE_URL}${path}`, requestOptions);
+  };
+
+  const makeRequest = async () => {
+    const response = await buildRequest();
+    return {
+      response,
+      payload: await parseResponsePayload(response),
+    };
+  };
+
+  let { response, payload } = await makeRequest();
+
+  if (response.status === 401 && !path.includes("/auth/refresh")) {
+    if (!isRefreshing) {
+      isRefreshing = true;
+      refreshPromise = fetch(`${API_BASE_URL}/auth/refresh`, {
+        method: "POST",
+        credentials: "include",
+      })
+        .then((refreshResponse) => {
+          if (!refreshResponse.ok) {
+            throw new Error("Refresh failed");
+          }
+          return refreshResponse.json().catch(() => null);
+        })
+        .finally(() => {
+          isRefreshing = false;
+        });
+    }
+    try {
+      await refreshPromise;
+      ({ response, payload } = await makeRequest());
+    } catch (err) {
+      if (!suppressGlobalErrorToast) {
+        toast.error("Session refresh failed. Please log in again.");
+      }
+      throw err;
     }
   }
 
-  try {
-    return await clone.text();
-  } catch {
-    return null;
-  }
-};
+  const message =
+    (payload && typeof payload === "object" && payload.message) ||
+    response.statusText ||
+    "Server error";
 
-const dispatchApiStatus = async (response) => {
-  if (typeof window === "undefined") {
-    return;
-  }
-  try {
-    const payload = await readPayload(response);
-    const statusType = getStatusType(response.status);
-    const message =
-      (payload &&
-        typeof payload === "object" &&
-        payload.message &&
-        payload.message.toString()) ||
-      (typeof payload === "string" && payload) ||
-      response.statusText ||
-      "Server error";
+  const hasFailure =
+    !response.ok ||
+    (payload && typeof payload === "object" && payload.success === false);
 
-    const detail = {
-      status: response.status,
-      type: statusType,
-      code: payload?.code ?? statusType,
-      needsLogin: payload?.needsLogin ?? response.status === 401,
-      message,
-      payload,
-    };
-
-    window.dispatchEvent(new CustomEvent("apiStatus", { detail }));
-  } catch (err) {
-    console.error("Unable to dispatch API status", err);
-  }
-};
-
-export const apiFetch = async (path, options = {}) => {
-  const { headers = {}, ...rest } = options;
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    credentials: "include",
-    headers: {
-      "Content-Type": "application/json",
-      ...headers,
-    },
-    ...rest,
-  });
-
-  if (!response.ok) {
-    await dispatchApiStatus(response);
+  if (hasFailure) {
+    const error = new Error(message);
+    error.status = response.status;
+    error.code = payload?.code;
+    error.payload = payload;
+    error.needsLogin = payload?.needsLogin ?? response.status === 401;
+    if (error.needsLogin && typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("sessionExpired", {
+          detail: { needsLogin: true },
+        }),
+      );
+    }
+    if (!suppressGlobalErrorToast) {
+      toast.error(message);
+    }
+    throw error;
   }
 
-  return response;
+  return payload;
 };

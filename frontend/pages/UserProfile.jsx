@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
+import { toast } from "react-hot-toast";
 import { apiFetch } from "../src/api.js";
+import { useAuth } from "../src/contexts/AuthContext.jsx";
 
-const UserProfile = ({ user, onUserUpdated }) => {
+const UserProfile = ({ user }) => {
   const navigate = useNavigate();
+  const { refreshUser } = useAuth();
   const [groups, setGroups] = useState([]);
-  const [statusMessage, setStatusMessage] = useState(null);
   const [isSaving, setIsSaving] = useState(false);
   const [errors, setErrors] = useState({});
   const [formValues, setFormValues] = useState({
@@ -30,16 +32,22 @@ const UserProfile = ({ user, onUserUpdated }) => {
     let mounted = true;
     const loadGroups = async () => {
       try {
-        const response = await apiFetch("/groups");
-        if (!response.ok) {
-          throw new Error("Unable to load groups.");
-        }
-        const data = await response.json();
+        const payload = await apiFetch("/groups/public", {
+          suppressGlobalErrorToast: true,
+        });
+        const list = Array.isArray(payload?.data)
+          ? payload?.data
+          : Array.isArray(payload)
+            ? payload
+            : [];
         if (mounted) {
-          setGroups(data);
+          setGroups(list);
         }
       } catch (err) {
-        console.error("Group list fetch failed:", err);
+        if (mounted) {
+          setGroups([]);
+        }
+        toast.error(err.message || "Unable to load group list.");
       }
     };
 
@@ -60,7 +68,6 @@ const UserProfile = ({ user, onUserUpdated }) => {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
-    setStatusMessage(null);
 
     const validationErrors = {};
 
@@ -97,25 +104,27 @@ const UserProfile = ({ user, onUserUpdated }) => {
 
     setIsSaving(true);
     try {
-      const response = await apiFetch("/auth/me", {
-        method: "PUT",
-        body: JSON.stringify(payload),
-      });
+      await toast.promise(
+        apiFetch("/auth/me", {
+          method: "PUT",
+          body: payload,
+          suppressGlobalErrorToast: true,
+        }),
+        {
+          loading: "Saving profile...",
+          success: (res) => res?.message ?? "Profile updated successfully.",
+          error: (err) => err.message || "Unable to update profile.",
+        },
+      );
 
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.message || "Unable to update profile.");
-      }
-
-      setStatusMessage({ type: "success", text: "Profile updated successfully." });
       setFormValues((prev) => ({
         ...prev,
         password: "",
         confirmPassword: "",
       }));
-      onUserUpdated?.(data.user);
-    } catch (err) {
-      setStatusMessage({ type: "error", text: err.message });
+      await refreshUser({ suppressGlobalLoading: true });
+    } catch {
+      // handled
     } finally {
       setIsSaving(false);
     }
@@ -138,22 +147,11 @@ const UserProfile = ({ user, onUserUpdated }) => {
             <p className="text-sm text-gray-500 uppercase tracking-wide">
               {user?.role}
             </p>
-            <h1 className="text-2xl font-semibold text-gray-900">{user?.name}</h1>
+            <h1 className="text-2xl font-semibold text-gray-900">
+              {user?.name}
+            </h1>
             <p className="text-sm text-gray-500">{user?.email}</p>
           </div>
-
-          {statusMessage && (
-            <div
-              className={`px-3 py-2 rounded-lg text-sm ${
-                statusMessage.type === "error"
-                  ? "bg-red-50 text-red-700 border border-red-100"
-                  : "bg-green-50 text-green-700 border border-green-100"
-              }`}
-              role="alert"
-            >
-              {statusMessage.text}
-            </div>
-          )}
 
           <form className="space-y-5" onSubmit={handleSubmit}>
             <div className="space-y-1">
@@ -227,7 +225,9 @@ const UserProfile = ({ user, onUserUpdated }) => {
                 <input
                   type="password"
                   className={`w-full px-3 py-2 rounded-lg border ${
-                    errors.confirmPassword ? "border-red-400" : "border-gray-200"
+                    errors.confirmPassword
+                      ? "border-red-400"
+                      : "border-gray-200"
                   } focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100`}
                   value={formValues.confirmPassword}
                   onChange={(e) =>

@@ -73,19 +73,12 @@ const opportunitySchema = new mongoose.Schema(
   },
 );
 
-/* --------------------------
-   INDEXES (IMPORTANT)
----------------------------*/
-
-// fast filtering
 opportunitySchema.index({ deadline: 1 });
 opportunitySchema.index({ category: 1 });
 opportunitySchema.index({ createdBy: 1 });
 
-// fast group filtering
 opportunitySchema.index({ targetGroups: 1 });
 
-// analytics queries
 opportunitySchema.index({ company: 1 });
 
 module.exports = mongoose.model("Opportunity", opportunitySchema);

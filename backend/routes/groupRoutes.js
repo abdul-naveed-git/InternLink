@@ -4,14 +4,16 @@ const {
   getGroups,
   createGroup,
   deleteGroup,
+  getPublicGroups,
 } = require("../controllers/groupController");
-const auth = require("../middleware/auth");
 const authorizeRoles = require("../middleware/role");
+const requireAuth = require("../middleware/requireAuth");
 
 const router = express.Router();
 
-router.get("/", getGroups);
-router.post("/", auth, authorizeRoles("admin"), createGroup);
-router.delete("/:id", auth, authorizeRoles("admin"), deleteGroup);
+router.get("/public", getPublicGroups);
+router.get("/", requireAuth, getGroups);
+router.post("/", requireAuth, authorizeRoles("admin"), createGroup);
+router.delete("/:id", requireAuth, authorizeRoles("admin"), deleteGroup);
 
 module.exports = router;

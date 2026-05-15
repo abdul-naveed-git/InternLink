@@ -5,6 +5,7 @@ import * as XLSX from "xlsx";
 import { saveAs } from "file-saver";
 import { PlusCircle, FileText, PieChart, Users, Download } from "lucide-react";
 import { apiFetch } from "../src/api.js";
+import { useNotifications } from "../src/contexts/NotificationContext.jsx";
 import {
   BarChart,
   Bar,
@@ -44,35 +45,37 @@ export const AdminDashboard = ({
   const [activeTab, setActiveTab] = useState("listings");
   const [filters, setFilters] = useState(() => ({ ...DEFAULT_FILTERS }));
   const [formErrors, setFormErrors] = useState({});
-  const [submitError, setSubmitError] = useState("");
   const [students, setStudents] = useState([]);
-  const [studentsError, setStudentsError] = useState("");
 
   const currentUserId = user?._id;
   const normalizedUserId = currentUserId ? String(currentUserId) : "";
   const navigate = useNavigate();
+  const notifications = useNotifications();
 
   useEffect(() => {
     if (!user?.role) return;
     let isMounted = true;
 
     const loadStudents = async () => {
-      setStudentsError("");
       try {
-        const response = await apiFetch("/users");
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data?.message || "Unable to load student data.");
-        }
+        const payload = await apiFetch("/users", {
+          suppressGlobalErrorToast: true,
+        });
+        const list = Array.isArray(payload?.data)
+          ? payload.data
+          : Array.isArray(payload)
+            ? payload
+            : [];
+
         if (isMounted) {
-          setStudents(Array.isArray(data) ? data : []);
-          setStudentsError("");
+          setStudents(list);
         }
       } catch (err) {
+        const message = err.message || "Unable to load student data.";
         if (isMounted) {
           setStudents([]);
-          setStudentsError(err.message || "Unable to load student data.");
         }
+        notifications.error(message);
       }
     };
 
@@ -81,7 +84,7 @@ export const AdminDashboard = ({
     return () => {
       isMounted = false;
     };
-  }, [user]);
+  }, [user, notifications]);
 
   const studentLookup = useMemo(() => {
     const map = new Map();
@@ -168,9 +171,7 @@ export const AdminDashboard = ({
         return false;
       }
 
-      const applicationCount = Array.isArray(opp.appliedBy)
-        ? opp.appliedBy.length
-        : 0;
+      const applicationCount = opp.appliedByCount ?? 0;
       if (minApplications !== null && applicationCount < minApplications) {
         return false;
       }
@@ -211,12 +212,12 @@ export const AdminDashboard = ({
 
   const groupData = groups.map((g) => {
     const key = String(g._id);
-    const applications = filteredOpportunities.reduce((acc, curr) => {
-      const targetIds = (curr.targetGroups || []).map((id) => String(id));
-      return targetIds.includes(key)
-        ? acc + (curr.appliedBy?.length ?? 0)
-        : acc;
-    }, 0);
+      const applications = filteredOpportunities.reduce((acc, curr) => {
+        const targetIds = (curr.targetGroups || []).map((id) => String(id));
+        return targetIds.includes(key)
+          ? acc + (curr.appliedByCount ?? 0)
+          : acc;
+      }, 0);
     return { name: g.name, applications };
   });
 
@@ -232,8 +233,8 @@ export const AdminDashboard = ({
     if (!filteredCount) return;
 
     const rows = filteredOpportunities.map((opp) => {
-      const appliedCount = opp.appliedBy?.length ?? 0;
-      const savedCount = opp.savedBy?.length ?? 0;
+      const appliedCount = opp.appliedByCount ?? 0;
+      const savedCount = opp.savedByCount ?? 0;
       return {
         Title: opp.title,
         Company: opp.company,
@@ -303,7 +304,6 @@ export const AdminDashboard = ({
       const { [field]: _removed, ...rest } = prev;
       return rest;
     });
-    setSubmitError("");
   };
 
   const isValidUrl = (value) => {
@@ -369,7 +369,6 @@ export const AdminDashboard = ({
 
   const handlePostSubmit = (e) => {
     e.preventDefault();
-    setSubmitError("");
     setFormErrors({});
 
     const formData = new FormData(e.currentTarget);
@@ -386,7 +385,7 @@ export const AdminDashboard = ({
     const errors = validateOpportunity(payload);
     if (Object.keys(errors).length) {
       setFormErrors(errors);
-      setSubmitError("Please resolve highlighted fields before posting.");
+      notifications.error("Please resolve highlighted fields before posting.");
       return;
     }
 
@@ -398,7 +397,6 @@ export const AdminDashboard = ({
   const handleTabChange = (tabId) => {
     setActiveTab(tabId);
     setFormErrors({});
-    setSubmitError("");
   };
 
   return (
@@ -413,7 +411,10 @@ export const AdminDashboard = ({
           },
           {
             label: "Total Applications",
-            value: opportunities.reduce((s, o) => s + o.appliedBy.length, 0),
+            value: opportunities.reduce(
+              (s, o) => s + (o.appliedByCount ?? 0),
+              0,
+            ),
             icon: Users,
             color: "text-green-600",
           },
@@ -523,12 +524,6 @@ export const AdminDashboard = ({
                   <p className="text-sm text-gray-500 mt-1">
                     Showing {filteredCount} of {opportunities.length} postings.
                   </p>
-                  {studentsError && (
-                    <p className="text-xs text-red-600 mt-1">
-                      {studentsError} Exported sheets will fall back to IDs
-                      until the student list loads.
-                    </p>
-                  )}
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -797,8 +792,8 @@ export const AdminDashboard = ({
                         </div>
                         <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
                           <span>
-                            {opp.appliedBy?.length ?? 0} application
-                            {(opp.appliedBy?.length ?? 0) === 1 ? "" : "s"}
+                            {opp.appliedByCount ?? 0} application
+                            {(opp.appliedByCount ?? 0) === 1 ? "" : "s"}
                           </span>
                           <span className="text-gray-300">·</span>
                           <span>
@@ -834,15 +829,6 @@ export const AdminDashboard = ({
               Post New Opportunity
             </h3>
             <form onSubmit={handlePostSubmit} className="space-y-4">
-              {submitError && (
-                <div
-                  className="px-3 py-2 rounded-lg text-sm text-red-700 bg-red-50 border border-red-100"
-                  role="alert"
-                  aria-live="assertive"
-                >
-                  {submitError}
-                </div>
-              )}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-gray-700">

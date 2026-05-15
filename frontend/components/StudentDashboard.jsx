@@ -8,6 +8,7 @@ export const StudentDashboard = ({
   onSave,
   onApply,
   onViewDetails,
+  disableActions = false,
 }) => {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
@@ -17,12 +18,14 @@ export const StudentDashboard = ({
       o.title.toLowerCase().includes(search.toLowerCase()) ||
       o.company.toLowerCase().includes(search.toLowerCase()) ||
       o.description.toLowerCase().includes(search.toLowerCase());
-    const matchesGroup = o.targetGroups.includes(user.groupId);
+    const matchesGroup = user?.groupId
+      ? o.targetGroups.includes(user.groupId)
+      : false;
 
     if (filter === "saved")
-      return matchesSearch && matchesGroup && o.savedBy.includes(user._id);
+      return matchesSearch && matchesGroup && o.isSaved;
     if (filter === "applied")
-      return matchesSearch && matchesGroup && o.appliedBy.includes(user._id);
+      return matchesSearch && matchesGroup && o.hasApplied;
     return matchesSearch && matchesGroup;
   });
 
@@ -77,16 +80,17 @@ export const StudentDashboard = ({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredOpps.map((o) => (
-              <Opportunitycard
-                key={o._id}
-                opportunity={o}
-                user={user}
-                isSaved={o.savedBy.includes(user._id)}
-                isApplied={o.appliedBy.includes(user._id)}
-                onSave={onSave}
-                onApply={onApply}
-                onViewDetails={onViewDetails}
-              />
+            <Opportunitycard
+              key={o._id}
+              opportunity={o}
+              user={user}
+              isSaved={o.isSaved}
+              isApplied={o.hasApplied}
+              onSave={onSave}
+              onApply={onApply}
+              onViewDetails={onViewDetails}
+              disableActions={disableActions}
+            />
           ))}
         </div>
       )}

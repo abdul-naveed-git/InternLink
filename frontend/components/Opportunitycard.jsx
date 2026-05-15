@@ -16,6 +16,7 @@ const Opportunitycard = ({
   onSave,
   onApply,
   onViewDetails,
+  disableActions = false,
 }) => {
   const status = getDeadlineStatus(opportunity.deadline);
   return (
@@ -75,12 +76,19 @@ const Opportunitycard = ({
             <>
               <button
                 onClick={() => onApply?.(opportunity._id)}
-                disabled={isApplied}
+                disabled={isApplied || disableActions}
+                title={
+                  disableActions
+                    ? "Please join a group to apply"
+                    : isApplied
+                      ? "Already applied"
+                      : "Apply now"
+                }
                 className={`flex items-center px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   isApplied
                     ? "bg-green-50 text-green-700 border border-green-200"
                     : "bg-indigo-600 text-white hover:bg-indigo-700 shadow-sm"
-                }`}
+                } ${disableActions ? "opacity-60 cursor-not-allowed" : ""}`}
                 type="button"
               >
                 {isApplied ? (
@@ -92,12 +100,21 @@ const Opportunitycard = ({
               </button>
               <button
                 onClick={() => onSave?.(opportunity._id)}
+                disabled={disableActions}
                 className={`p-2 rounded-lg border transition-colors ${
                   isSaved
                     ? "bg-indigo-50 text-indigo-600 border-indigo-200"
                     : "text-gray-400 border-gray-200 hover:text-gray-600 hover:border-gray-300"
+                } ${
+                  disableActions ? "opacity-60 cursor-not-allowed" : ""
                 }`}
-                title={isSaved ? "Saved" : "Save for later"}
+                title={
+                  disableActions
+                    ? "Please join a group to save opportunities"
+                    : isSaved
+                      ? "Saved"
+                      : "Save for later"
+                }
                 type="button"
               >
                 <Bookmark
@@ -107,10 +124,11 @@ const Opportunitycard = ({
             </>
           )}
 
-          {user?.role === "teacher" && (
+          {["teacher", "admin"].includes(user?.role) && (
             <div className="flex items-center gap-2">
               <span className="text-xs text-gray-400">
-                {opportunity.appliedBy.length} applicants
+                {opportunity.appliedByCount ?? opportunity.appliedBy?.length ?? 0}{" "}
+                applicants
               </span>
             </div>
           )}

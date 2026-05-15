@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
+import { toast } from "react-hot-toast";
 import { apiFetch } from "../src/api.js";
 
 const initialState = {
@@ -14,7 +15,6 @@ const AdminTeacherCreation = () => {
   const navigate = useNavigate();
   const [formValues, setFormValues] = useState(initialState);
   const [errors, setErrors] = useState({});
-  const [status, setStatus] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleChange = (field, value) => {
@@ -23,7 +23,7 @@ const AdminTeacherCreation = () => {
       const { [field]: removed, ...rest } = prev;
       return rest;
     });
-    setStatus(null);
+    setErrors({});
   };
 
   const validate = () => {
@@ -55,22 +55,25 @@ const AdminTeacherCreation = () => {
 
     setIsSubmitting(true);
     try {
-      const response = await apiFetch("/users/teachers", {
-        method: "POST",
-        body: JSON.stringify({
-          name: formValues.name.trim(),
-          email: formValues.email.trim().toLowerCase(),
-          password: formValues.password,
+      await toast.promise(
+        apiFetch("/users/teachers", {
+          method: "POST",
+          body: {
+            name: formValues.name.trim(),
+            email: formValues.email.trim().toLowerCase(),
+            password: formValues.password,
+          },
+          suppressGlobalErrorToast: true,
         }),
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.message || "Unable to create teacher.");
-      }
-      setStatus({ type: "success", message: data.message || "Teacher created." });
+        {
+          loading: "Creating teacher account...",
+          success: (result) => result?.message ?? "Teacher created successfully.",
+          error: (err) => err.message || "Creation failed.",
+        },
+      );
       setFormValues(initialState);
-    } catch (err) {
-      setStatus({ type: "error", message: err.message || "Creation failed." });
+    } catch {
+      // handled
     } finally {
       setIsSubmitting(false);
     }
@@ -93,19 +96,6 @@ const AdminTeacherCreation = () => {
             Admins can create teacher profiles that bypass student registration.
           </p>
         </div>
-
-        {status && (
-          <div
-            className={`px-4 py-3 rounded-xl text-sm ${
-              status.type === "error"
-                ? "bg-red-50 text-red-700 border border-red-100"
-                : "bg-green-50 text-green-700 border border-green-100"
-            }`}
-            role="status"
-          >
-            {status.message}
-          </div>
-        )}
 
         <form className="space-y-4" onSubmit={handleSubmit}>
           <div>

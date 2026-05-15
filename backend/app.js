@@ -9,12 +9,15 @@ const compression = require("compression");
 const morgan = require("morgan");
 
 const connectDB = require("./config/db");
+require("./utils/firebaseAdminClient");
 
 const authRoutes = require("./routes/authRoutes");
 const groupRoutes = require("./routes/groupRoutes");
 const opportunityRoutes = require("./routes/opportunityRoutes");
 const errorHandler = require("./middleware/errorHandler");
 const userRoutes = require("./routes/userRoutes");
+const requireAuth = require("./middleware/requireAuth");
+const requireGroupAssignment = require("./middleware/groupAssignment");
 const { createHttpError } = require("./utils/httpErrors");
 
 const NODE_ENV = process.env.NODE_ENV || "development";
@@ -36,7 +39,9 @@ if (allowedOrigins.length > 0) {
     if (!origin || allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-    return callback(createHttpError(403, "CORS origin not allowed", "cors_error"));
+    return callback(
+      createHttpError(403, "CORS origin not allowed", "cors_error"),
+    );
   };
 }
 
@@ -73,9 +78,14 @@ app.use(express.urlencoded({ extended: true }));
 app.use(apiLimiter);
 
 app.use("/api/auth", authRoutes);
+app.use(
+  "/api/opportunities",
+  requireAuth,
+  requireGroupAssignment,
+  opportunityRoutes,
+);
 app.use("/api/groups", groupRoutes);
-app.use("/api/opportunities", opportunityRoutes);
-app.use("/api/users", userRoutes);
+app.use("/api/users", requireAuth, userRoutes);
 
 app.use((req, res, next) => {
   next(createHttpError(404, "Route not found", "not_found"));

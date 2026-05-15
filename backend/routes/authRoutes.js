@@ -1,34 +1,18 @@
 const express = require("express");
-
 const {
-  register,
-  login,
+  firebaseSession,
   refreshToken,
   logout,
   getCurrentUser,
   updateProfile,
-  forgotPassword,
-  confirmForgotPassword,
-  requestPasswordChange,
-  confirmPasswordChange,
-  requestEmailVerification,
-  confirmEmailVerification,
 } = require("../controllers/authController");
-const auth = require("../middleware/auth");
-
+const requireAuth = require("../middleware/requireAuth");
 const router = express.Router();
 
-router.post("/register", register);
-router.post("/login", login);
-router.get("/me", auth, getCurrentUser);
-router.put("/me", auth, updateProfile);
+router.post("/firebase/session", firebaseSession);
 router.post("/refresh", refreshToken);
 router.post("/logout", logout);
-router.post("/forgot-password", forgotPassword);
-router.post("/forgot-password/confirm", confirmForgotPassword);
-router.post("/verify-email/request", requestEmailVerification);
-router.post("/verify-email/confirm", confirmEmailVerification);
-router.post("/password-change/request", auth, requestPasswordChange);
-router.post("/password-change/confirm", auth, confirmPasswordChange);
+router.get("/me", getCurrentUser);
+router.put("/me", requireAuth, updateProfile);
 
 module.exports = router;
