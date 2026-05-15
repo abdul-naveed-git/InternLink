@@ -75,6 +75,19 @@ const createSessionForUser = async (user, res) => {
   console.info(
     `[auth] session created for ${user.email} (${user.role}) [${user._id}]`,
   );
+  res.cookie("accessToken", accessToken, {
+    httpOnly: true,
+    sameSite: "none",
+    secure: true,
+    maxAge: 15 * 60 * 1000,
+  });
+
+  res.cookie("refreshToken", refreshToken, {
+    httpOnly: true,
+    sameSite: "none",
+    secure: true,
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
 
   return sanitizeUser(user);
 };
@@ -111,17 +124,19 @@ exports.firebaseSession = asyncHandler(async (req, res) => {
       }
     }
 
-    user = await User.create({
-      name: name || firebaseUser.name,
-      email: firebaseUser.email,
-      firebaseUid: firebaseUser.uid,
-      role: "student",
-      groupId: group ? group._id : null,
-      emailVerified: true,
-    });
-  }
+  res.cookie("accessToken", accessToken, {
+    httpOnly: true,
+    sameSite: "none",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 15 * 60 * 1000,
+  });
 
-  const safeUser = await createSessionForUser(user, res);
+  res.cookie("refreshToken", refreshToken, {
+    httpOnly: true,
+    sameSite: "none",
+    secure: process.env.NODE_ENV === "production",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
 
   sendSuccess(res, {
     message: "Session created",
@@ -159,9 +174,21 @@ exports.refreshToken = asyncHandler(async (req, res) => {
   user.refreshToken = newRefreshToken;
   await user.save();
 
-  setAuthCookies(res, newAccessToken, newRefreshToken);
+  res.cookie("accessToken", newAccessToken, {
+    httpOnly: true,
+    sameSite: "none",
+    secure: true,
+    maxAge: 15 * 60 * 1000,
+  });
 
-  sendSuccess(res, {
+  res.cookie("refreshToken", newRefreshToken, {
+    httpOnly: true,
+    sameSite: "none",
+    secure: true,
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+
+  res.json({
     message: "Token rotated",
     data: null,
   });
