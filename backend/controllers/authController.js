@@ -123,25 +123,6 @@ exports.firebaseSession = asyncHandler(async (req, res) => {
         throwValidationError("Group not found.");
       }
     }
-
-  res.cookie("accessToken", accessToken, {
-    httpOnly: true,
-    sameSite: "none",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 15 * 60 * 1000,
-  });
-
-  res.cookie("refreshToken", refreshToken, {
-    httpOnly: true,
-    sameSite: "none",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
-
-  sendSuccess(res, {
-    message: "Session created",
-    data: { user: safeUser },
-  });
 });
 
 exports.refreshToken = asyncHandler(async (req, res) => {
