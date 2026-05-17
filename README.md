@@ -13,11 +13,15 @@ A full-stack internship and opportunity management platform built with the MERN 
 * 👥 Group Management
 * 🛠️ Admin Dashboard
 * 📊 Interactive Dashboard UI
-* 🔔 Notification Support
 * ☁️ Firebase Integration
 * 📱 Responsive Modern Interface
 
 ---
+![Login Page](./assets/login.png)
+![Dashboard](./assets/dashboard.png)
+![Profile](./assets/Userprofile.png)
+![Opportunities](./assets/Oppo.png)
+![Admin Panel](./assets/admin.png)
 
 ## 🧑‍💻 Tech Stack
 
