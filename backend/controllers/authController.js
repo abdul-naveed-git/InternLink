@@ -75,19 +75,6 @@ const createSessionForUser = async (user, res) => {
   console.info(
     `[auth] session created for ${user.email} (${user.role}) [${user._id}]`,
   );
-  res.cookie("accessToken", accessToken, {
-    httpOnly: true,
-    sameSite: "none",
-    secure: true,
-    maxAge: 15 * 60 * 1000,
-  });
-
-  res.cookie("refreshToken", refreshToken, {
-    httpOnly: true,
-    sameSite: "none",
-    secure: true,
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
 
   return sanitizeUser(user);
 };
@@ -123,6 +110,23 @@ exports.firebaseSession = asyncHandler(async (req, res) => {
         throwValidationError("Group not found.");
       }
     }
+
+    user = await User.create({
+      name: name || firebaseUser.name,
+      email: firebaseUser.email,
+      firebaseUid: firebaseUser.uid,
+      role: "student",
+      groupId: group ? group._id : null,
+      emailVerified: true,
+    });
+  }
+
+  const safeUser = await createSessionForUser(user, res);
+
+  sendSuccess(res, {
+    message: "Session created",
+    data: { user: safeUser },
+  });
 });
 
 exports.refreshToken = asyncHandler(async (req, res) => {
@@ -155,21 +159,9 @@ exports.refreshToken = asyncHandler(async (req, res) => {
   user.refreshToken = newRefreshToken;
   await user.save();
 
-  res.cookie("accessToken", newAccessToken, {
-    httpOnly: true,
-    sameSite: "none",
-    secure: true,
-    maxAge: 15 * 60 * 1000,
-  });
+  setAuthCookies(res, newAccessToken, newRefreshToken);
 
-  res.cookie("refreshToken", newRefreshToken, {
-    httpOnly: true,
-    sameSite: "none",
-    secure: true,
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-  });
-
-  res.json({
+  sendSuccess(res, {
     message: "Token rotated",
     data: null,
   });
