@@ -1,3 +1,13 @@
+![InternLink Banner](https://img.shields.io/badge/InternLink-Opportunity%20Management-4F46E5?style=for-the-badge)
+![Frontend](https://img.shields.io/badge/Frontend-React%2019-61DAFB?style=for-the-badge&logo=react)
+![Backend](https://img.shields.io/badge/Backend-Node.js-339933?style=for-the-badge&logo=node.js)
+![Database](https://img.shields.io/badge/Database-MongoDB-47A248?style=for-the-badge&logo=mongodb)
+![Express](https://img.shields.io/badge/API-Express.js-000000?style=for-the-badge&logo=express)
+![Firebase](https://img.shields.io/badge/Auth-Firebase-FFCA28?style=for-the-badge&logo=firebase)
+![Tailwind CSS](https://img.shields.io/badge/UI-TailwindCSS-06B6D4?style=for-the-badge&logo=tailwindcss)
+![Vite](https://img.shields.io/badge/Build-Vite-646CFF?style=for-the-badge&logo=vite)
+![JWT](https://img.shields.io/badge/Security-JWT-black?style=for-the-badge&logo=jsonwebtokens)
+![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)
 # InternLink
 
 A full-stack internship and opportunity management platform built with the MERN ecosystem. InternLink helps students discover opportunities, manage profiles, collaborate in groups, and interact through a modern dashboard experience.
